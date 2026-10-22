@@ -41,11 +41,12 @@ export function SessionCustomizationDialog({
   variant:
     | { type: "customize" }
     | {
-        type: "edit";
+        type: "create" | "edit";
         initialName: string;
         pending: boolean;
         disabled: boolean;
         error?: string;
+        ownership?: "PRIVATE" | "PROJECT";
       };
   initialFilters: FilterState;
   initialUnmatchedTraces: "show" | "hide";
@@ -56,12 +57,12 @@ export function SessionCustomizationDialog({
     unmatchedTraces: "show" | "hide";
     viewMode: SessionViewMode;
   }) => void;
-  preview: Pick<
+  preview?: Pick<
     ComponentProps<typeof SessionFilterPreview>,
     "pending" | "error" | "navigation"
   > & { traces: RouterOutputs["sessions"]["previewTree"] | undefined };
 }) {
-  const editing = variant.type === "edit" ? variant : undefined;
+  const editing = variant.type !== "customize" ? variant : undefined;
   const formId = useId();
   const form = useForm({
     defaultValues: {
@@ -79,7 +80,7 @@ export function SessionCustomizationDialog({
     onFiltersChange: (filters) => form.setValue("filters", filters),
   });
   const matchingTraces = useSessionFilterPreview(
-    preview.traces,
+    preview?.traces,
     filterInput.filters,
   );
   const handlePresetToggle = (filter: FilterState[number]) => {
@@ -110,6 +111,7 @@ export function SessionCustomizationDialog({
     if (filters === null) return;
     const configuration = { ...values, filters };
     if (
+      preview &&
       !preview.pending &&
       !preview.error &&
       matchingTraces?.some((trace) => trace.observations.length > 0) &&
@@ -126,10 +128,20 @@ export function SessionCustomizationDialog({
   return (
     <Dialog
       size="lg"
-      title={editing ? "Edit view" : "Customize session view"}
+      title={
+        {
+          edit: "Edit view",
+          create: "New session view",
+          customize: "Customize session view",
+        }[variant.type]
+      }
       actions={[
         {
-          label: editing ? "Save changes" : "Apply changes",
+          label: {
+            edit: "Save changes",
+            create: "Create view",
+            customize: "Apply changes",
+          }[variant.type],
           type: "submit",
           form: formId,
           loading: editing?.pending,
@@ -150,11 +162,16 @@ export function SessionCustomizationDialog({
           <form
             id={formId}
             className="flex min-h-0 flex-1 flex-col overflow-hidden border-y text-sm sm:h-[65vh] sm:flex-initial"
-            onSubmit={form.handleSubmit((values) =>
-              handleSubmit(values, openDialog),
-            )}
+            onSubmit={(event) => {
+              event.stopPropagation();
+              return form.handleSubmit((values) =>
+                handleSubmit(values, openDialog),
+              )(event);
+            }}
           >
-            <div className="grid min-h-0 min-w-0 flex-1 overflow-y-auto md:grid-cols-2 md:grid-rows-[minmax(0,1fr)] md:overflow-hidden">
+            <div
+              className={`grid min-h-0 min-w-0 flex-1 overflow-y-auto md:grid-rows-[minmax(0,1fr)] md:overflow-hidden ${preview ? "md:grid-cols-2" : ""}`}
+            >
               <div className="flex flex-col gap-2 p-4 md:overflow-y-auto">
                 {editing && (
                   <div className="mb-2 border-b pb-4">
@@ -175,6 +192,13 @@ export function SessionCustomizationDialog({
                 {editing?.error && (
                   <p role="alert" className="text-destructive text-sm">
                     {editing.error}
+                  </p>
+                )}
+                {editing?.ownership && (
+                  <p className="text-muted-foreground text-sm">
+                    {editing.ownership === "PRIVATE"
+                      ? "Private view. Only you can see and edit it."
+                      : "Project view. Changes apply everywhere this view is used, including annotation queues."}
                   </p>
                 )}
                 <Form.Field label="Observation filters">
@@ -291,13 +315,15 @@ export function SessionCustomizationDialog({
                   </Form.Field>
                 </div>
               </div>
-              <SessionFilterPreview
-                key={preview.navigation?.sessionId}
-                {...preview}
-                traces={matchingTraces}
-                invalid={filterInput.invalid}
-                onFilter={handlePreviewFilter}
-              />
+              {preview && (
+                <SessionFilterPreview
+                  key={preview.navigation?.sessionId}
+                  {...preview}
+                  traces={matchingTraces}
+                  invalid={filterInput.invalid}
+                  onFilter={handlePreviewFilter}
+                />
+              )}
             </div>
           </form>
         )}

@@ -225,6 +225,8 @@ export const TestSessionNavigation = TestObservationFilters.extend({
         {...args}
         preview={{
           ...args.preview,
+          pending: args.preview?.pending ?? false,
+          error: args.preview?.error,
           navigation: {
             sessionId: `session-${index + 1}`,
             isCurrentSession: index === 0,
@@ -233,7 +235,7 @@ export const TestSessionNavigation = TestObservationFilters.extend({
             onPrevious: index > 0 ? () => setIndex(index - 1) : undefined,
             onNext: index < 1 ? () => setIndex(index + 1) : undefined,
           },
-          traces: args.preview.traces?.slice(index, index + 1),
+          traces: args.preview?.traces?.slice(index, index + 1),
         }}
       />
     );
