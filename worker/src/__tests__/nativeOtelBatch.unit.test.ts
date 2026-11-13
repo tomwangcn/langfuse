@@ -1,83 +1,231 @@
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import { validateOtelJson } from "@langfuse/native";
 
+const nativeContext = {
+  projectId: "native-boundary",
+  fileKey: "generated-lookups.json",
+  now: "2026-09-24T00:00:00.000Z",
+  ingestionApiKey: "",
+  ingestionSdkName: "test",
+  ingestionSdkVersion: "test",
+  isLangfuseInternal: false,
+};
+
+const spanId = (index: number) => (index + 1).toString(16).padStart(16, "0");
+
 describe("Native OTEL batch NAPI boundary", () => {
-  it("associates sparse lookup results with their events and retains events needing no I/O", async () => {
-    const selectedTraceId = "0123456789abcdef0123456789abcdef";
-    const unselectedTraceId = "fedcba9876543210fedcba9876543210";
-    const spans = [0, 1, 2].map((index) => ({
-      traceId: index === 2 ? unselectedTraceId : selectedTraceId,
-      spanId: `0123456789abcde${index}`,
-      name: "sparse-lookups".repeat(1000),
-      startTimeUnixNano: "1750000000000000000",
-      endTimeUnixNano: "1750000001000000000",
-      attributes:
-        index === 1
-          ? [
-              {
-                key: "gen_ai.request.model",
-                value: { stringValue: "test-model" },
-              },
-            ]
-          : [],
-    }));
-    const validated = await validateOtelJson(
-      Buffer.from(JSON.stringify([{ resource: {}, scopeSpans: [{ spans }] }])),
-    );
-    const batch = await validated.extract(true);
-    const {
-      batch: processing,
-      mediaRequests,
-      lookupRequests,
-    } = await batch.process({
-      projectId: "native-boundary",
-      fileKey: "sparse-lookups.json",
-      now: "2026-09-24T00:00:00.000Z",
-      ingestionApiKey: "",
-      ingestionSdkName: "test",
-      ingestionSdkVersion: "test",
-      isLangfuseInternal: false,
+  it("keeps sparse lookup results correlated across grouped batches", async () => {
+    const attribute = (key: string, value: string) => ({
+      key,
+      value: { stringValue: value },
     });
-    try {
-      await expect(batch.copyJsonBuffer()).rejects.toMatchObject({
-        code: "ERR_OTEL_CLOSED",
-      });
-      expect(mediaRequests).toEqual([]);
-      expect(lookupRequests).toMatchObject([
-        { spanId: "0123456789abcde1", modelName: "test-model" },
-      ]);
-      await expect(
-        processing.complete([], [], undefined, true),
-      ).rejects.toThrow("incomplete OTEL lookup results");
-      const { finalized } = await processing.complete(
-        [],
-        [{ model: { id: "matched-model" } }],
-        undefined,
-        true,
-        [selectedTraceId],
-      );
-      expect(finalized).toBeDefined();
-      expect(finalized!.evaluationRows).toMatchObject([
-        { span_id: "0123456789abcde0", model_id: null },
-        { span_id: "0123456789abcde1", model_id: "matched-model" },
-        { span_id: "0123456789abcde2", model_id: null },
-      ]);
-      expect(finalized!.events).toHaveLength(3);
-      expect(finalized!.events[0]?.serializedEventBytes).toBeGreaterThan(
-        Buffer.byteLength(spans[0].name),
-      );
-      expect(finalized!.events[2]?.serializedEventBytes).toBeUndefined();
-    } finally {
-      await processing.dispose();
-      await batch.dispose();
-      await validated.dispose();
-    }
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(
+          fc.record({
+            model: fc.boolean(),
+            prompt: fc.boolean(),
+            outcome: fc.constantFrom("found", "missing", "error"),
+            group: fc.integer({ min: 0, max: 3 }),
+            selected: fc.boolean(),
+          }),
+          { maxLength: 12 },
+        ),
+        async (plans) => {
+          const spans = plans.map((plan, index) => ({
+            traceId: (plan.selected ? "a" : "b").repeat(32),
+            spanId: spanId(index),
+            name: `generated-${index}`.repeat(1000),
+            startTimeUnixNano: "1750000000000000000",
+            endTimeUnixNano: "1750000001000000000",
+            attributes: [
+              attribute(
+                "langfuse.observation.type",
+                plan.model || plan.prompt ? "generation" : "span",
+              ),
+              ...(plan.model
+                ? [attribute("gen_ai.request.model", `model-${index}`)]
+                : []),
+              ...(plan.prompt
+                ? [
+                    attribute(
+                      "langfuse.observation.prompt.name",
+                      `prompt-${index}`,
+                    ),
+                    attribute("langfuse.observation.prompt.version", "1"),
+                  ]
+                : []),
+            ],
+          }));
+          const payload = [0, 1].map((resource) => ({
+            resource: {},
+            scopeSpans: [0, 1].map((scope) => ({
+              scope: { name: `scope-${scope}` },
+              spans: spans.filter(
+                (_, index) => plans[index].group === resource * 2 + scope,
+              ),
+            })),
+          }));
+          const validated = await validateOtelJson(
+            Buffer.from(JSON.stringify(payload)),
+          );
+          const batch = await validated.extract(true);
+          const {
+            batch: processing,
+            mediaRequests,
+            lookupRequests,
+          } = await batch.process(nativeContext);
+          try {
+            await expect(batch.copyJsonBuffer()).rejects.toMatchObject({
+              code: "ERR_OTEL_CLOSED",
+            });
+            expect(mediaRequests).toEqual([]);
+            expect(
+              lookupRequests.map((request) => request.spanId).sort(),
+            ).toEqual(
+              plans
+                .flatMap((plan, index) =>
+                  plan.model || plan.prompt ? [spanId(index)] : [],
+                )
+                .sort(),
+            );
+            const results = lookupRequests.map((request) => {
+              const index = spans.findIndex(
+                (span) => span.spanId === request.spanId,
+              );
+              const plan = plans[index];
+              expect(request.modelName ?? null).toBe(
+                plan.model ? `model-${index}` : null,
+              );
+              expect(request.promptName ?? null).toBe(
+                plan.prompt ? `prompt-${index}` : null,
+              );
+              expect(request.promptVersion ?? null).toBe(
+                plan.prompt ? 1 : null,
+              );
+              if (plan.outcome === "error") return { error: "lookup failed" };
+              return {
+                model:
+                  plan.model && plan.outcome === "found"
+                    ? { id: `model-id-${index}` }
+                    : null,
+                promptId:
+                  plan.prompt && plan.outcome === "found"
+                    ? `prompt-id-${index}`
+                    : null,
+              };
+            });
+            if (results.length > 0) {
+              await expect(
+                processing.complete([], results.slice(0, -1), undefined, true),
+              ).rejects.toThrow("incomplete OTEL lookup results");
+            }
+            const { finalized } = await processing.complete(
+              [],
+              results,
+              undefined,
+              true,
+              ["a".repeat(32)],
+            );
+            expect(finalized).toBeDefined();
+            const rows = new Map(
+              finalized!.evaluationRows.map((row) => {
+                const value = row as Record<string, unknown>;
+                return [value.span_id, value];
+              }),
+            );
+            const events = new Map(
+              finalized!.events.map((event) => [event.event.ids.id, event]),
+            );
+            const retained = plans.flatMap((plan, index) =>
+              (plan.model || plan.prompt) && plan.outcome === "error"
+                ? []
+                : [index],
+            );
+            expect([...rows.keys()].sort()).toEqual(
+              retained.map(spanId).sort(),
+            );
+            expect([...events.keys()].sort()).toEqual(
+              retained.map(spanId).sort(),
+            );
+            for (const index of retained) {
+              const plan = plans[index];
+              expect(rows.get(spanId(index))).toMatchObject({
+                model_id:
+                  plan.model && plan.outcome === "found"
+                    ? `model-id-${index}`
+                    : null,
+                prompt_id:
+                  plan.prompt && plan.outcome === "found"
+                    ? `prompt-id-${index}`
+                    : null,
+              });
+              const event = events.get(spanId(index))!;
+              expect(event.traceId).toBe(spans[index].traceId);
+              if (plan.selected)
+                expect(event.serializedEventBytes).toBeGreaterThan(
+                  Buffer.byteLength(spans[index].name),
+                );
+              else expect(event.serializedEventBytes).toBeUndefined();
+            }
+            await expect(
+              processing.complete([], results, undefined, true),
+            ).rejects.toThrow();
+          } finally {
+            await processing.dispose();
+            await batch.dispose();
+            await validated.dispose();
+          }
+        },
+      ),
+      {
+        numRuns: 64,
+        examples: [
+          [[]],
+          [
+            [
+              {
+                model: true,
+                prompt: false,
+                outcome: "found",
+                group: 3,
+                selected: true,
+              },
+              {
+                model: false,
+                prompt: false,
+                outcome: "found",
+                group: 1,
+                selected: false,
+              },
+              {
+                model: false,
+                prompt: true,
+                outcome: "missing",
+                group: 0,
+                selected: true,
+              },
+              {
+                model: true,
+                prompt: true,
+                outcome: "error",
+                group: 2,
+                selected: false,
+              },
+            ],
+          ],
+        ],
+      },
+    );
   });
 
-  it("rejects the entire Rust batch when an event cannot fit the storage schema", async () => {
-    // A usage count of 1e30 exceeds ClickHouse's UInt64 maximum. Finalization must
-    // reject the whole batch so all its observations remain eligible for retry.
-    const spans = [1, 1e30].map((usage, index) => ({
+  it("drops invalid usage entries while preserving valid rows and pricing", async () => {
+    const spans = [
+      { input: 7, input_cached_tokens: 2 ** 64 },
+      { input: 2 ** 63, output: 2 ** 63 },
+      { input: 3 },
+    ].map((usageDetails, index) => ({
       traceId: "0123456789abcdef0123456789abcdef",
       spanId: `0123456789abcde${index}`,
       name: "storage-boundary",
@@ -85,8 +233,12 @@ describe("Native OTEL batch NAPI boundary", () => {
       endTimeUnixNano: "1750000001000000000",
       attributes: [
         {
+          key: "gen_ai.request.model",
+          value: { stringValue: "storage-boundary-model" },
+        },
+        {
           key: "langfuse.observation.usage_details",
-          value: { stringValue: JSON.stringify({ input: usage }) },
+          value: { stringValue: JSON.stringify(usageDetails) },
         },
       ],
     }));
@@ -94,25 +246,76 @@ describe("Native OTEL batch NAPI boundary", () => {
       Buffer.from(JSON.stringify([{ resource: {}, scopeSpans: [{ spans }] }])),
     );
     const batch = await validated.extract(true);
-    const {
-      batch: processing,
-      mediaRequests,
-      lookupRequests,
-    } = await batch.process({
-      projectId: "native-boundary",
-      fileKey: "storage-boundary.json",
-      now: "2026-09-24T00:00:00.000Z",
-      ingestionApiKey: "",
-      ingestionSdkName: "test",
-      ingestionSdkVersion: "test",
-      isLangfuseInternal: false,
-    });
+    const { batch: processing, mediaRequests, lookupRequests } =
+      await batch.process(nativeContext);
     try {
       expect(mediaRequests).toEqual([]);
-      expect(lookupRequests).toEqual([]);
-      await expect(
-        processing.complete([], [], undefined, true),
-      ).rejects.toThrow("usage_details");
+      expect(lookupRequests).toHaveLength(spans.length);
+      const lookup = {
+        model: { id: "storage-boundary-model-id" },
+        pricingTiers: [
+          {
+            id: "usage-tier",
+            name: "usage-tier",
+            isDefault: false,
+            priority: 0,
+            conditions: [
+              {
+                usageDetailPattern: "^input_cached_tokens$",
+                operator: "eq",
+                value: 0,
+                caseSensitive: true,
+              },
+            ],
+            prices: [
+              { usageType: "input", price: "0.000000000000000001" },
+              { usageType: "output", price: "0.000000000000000001" },
+            ],
+          },
+        ],
+      };
+      const { finalized } = await processing.complete(
+        [],
+        lookupRequests.map(() => lookup),
+        undefined,
+        true,
+      );
+      expect(finalized).toBeDefined();
+      expect(finalized!.events).toHaveLength(spans.length);
+      const rows = new Map(
+        finalized!.evaluationRows.map((row) => {
+          const value = row as Record<string, unknown>;
+          return [value.span_id as string, value];
+        }),
+      );
+      expect(rows.get(spans[0].spanId)).toMatchObject({
+        usage_details: { input: 7, total: 7 },
+        usage_pricing_tier_name: "usage-tier",
+        cost_details: {
+          input: expect.closeTo(7e-18, 30),
+          total: expect.closeTo(7e-18, 30),
+        },
+      });
+      expect(rows.get(spans[0].spanId)?.usage_details).toEqual({
+        input: 7,
+        total: 7,
+      });
+      expect(rows.get(spans[1].spanId)).toMatchObject({
+        usage_pricing_tier_name: "usage-tier",
+        cost_details: {
+          input: expect.any(Number),
+          output: expect.any(Number),
+          total: expect.any(Number),
+        },
+      });
+      expect(rows.get(spans[1].spanId)?.usage_details).toEqual({
+        input: 2n ** 63n,
+        output: 2n ** 63n,
+      });
+      expect(rows.get(spans[2].spanId)).toMatchObject({
+        usage_details: { input: 3, total: 3 },
+        usage_pricing_tier_name: "usage-tier",
+      });
     } finally {
       await processing.dispose();
       await batch.dispose();
