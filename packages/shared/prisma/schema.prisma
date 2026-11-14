@@ -292,7 +292,6 @@ enum SystemRole {
   INGEST
   AI_GATEWAY
   APPLICATION
-  SUPPORT_VIEWER
 }
 
 model RoleAssignment {
