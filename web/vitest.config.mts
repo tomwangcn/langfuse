@@ -234,7 +234,10 @@ export default defineConfig({
         extends: true,
         test: {
           name: "client",
-          include: ["src/**/*.clienttest.{ts,tsx}"],
+          include: [
+            "src/**/*.clienttest.{ts,tsx}",
+            ".storybook/docs/**/*.test.{ts,tsx}",
+          ],
           exclude: sharedExclude,
           environment: "jsdom",
           setupFiles: [
