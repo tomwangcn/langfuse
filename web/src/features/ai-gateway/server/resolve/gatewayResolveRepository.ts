@@ -28,7 +28,6 @@ export class GatewayResolveRepository {
           select: {
             name: true,
             email: true,
-            organizationMemberships: { select: { orgId: true, role: true } },
           },
         },
         gatewayAssociation: { select: { metadata: true, allowedModels: true } },

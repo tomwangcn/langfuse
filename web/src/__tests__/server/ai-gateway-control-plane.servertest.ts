@@ -97,6 +97,10 @@ import {
 } from "@langfuse/shared/src/server/auth/apiKeys";
 import { OrganizationId, SystemRoleId, UserId } from "@langfuse/shared/rbac";
 import {
+  replaceRolesForPrincipal,
+  revokeRolesForPrincipal,
+} from "@langfuse/shared/rbac/server";
+import {
   AI_GATEWAY_KEY_OWNER_USER_ID_METADATA_KEY,
   AI_GATEWAY_SERVICE_NAME,
 } from "@langfuse/shared";
@@ -3405,18 +3409,33 @@ describe("AI gateway control plane", () => {
         fastHashedSecretKey: createShaHash(secretKey, env.SALT),
         apiFormat: "openai.responses",
       });
+    // Changes the owner's org role without the app's cache invalidation.
     const setOwnerRole = (orgId: string, userId: string, role: Role | null) =>
-      role
-        ? prisma.organizationMembership.update({
-            where: { orgId_userId: { orgId, userId } },
-            data: { role },
-          })
-        : prisma.organizationMembership.delete({
+      prisma.$transaction(async (tx) => {
+        const tenantId = OrganizationId(orgId);
+        const principalId = UserId(userId);
+        if (!role) {
+          await tx.organizationMembership.delete({
             where: { orgId_userId: { orgId, userId } },
           });
-    const ownerNotAllowed = {
+          await revokeRolesForPrincipal(tx, { tenantId, principalId });
+          return;
+        }
+        await tx.organizationMembership.update({
+          where: { orgId_userId: { orgId, userId } },
+          data: { role },
+        });
+        await replaceRolesForPrincipal(tx, {
+          tenantId,
+          ownerId: tenantId,
+          principalId,
+          roleId: SystemRoleId(role),
+          tags: [],
+        });
+      });
+    const keyNotAllowed = {
       status: 403,
-      message: "API key owner is not allowed to invoke the gateway",
+      message: "API key is not allowed to invoke the gateway",
     };
 
     it.each([
@@ -3437,7 +3456,7 @@ describe("AI gateway control plane", () => {
 
         for (let attempt = 0; attempt < 2; attempt++) {
           await expect(authenticateKey(key.secretKey)).rejects.toMatchObject(
-            ownerNotAllowed,
+            keyNotAllowed,
           );
         }
         // A rejection is not cached, so restoring access applies at once.
@@ -3499,7 +3518,7 @@ describe("AI gateway control plane", () => {
       });
       await invalidateGatewayResolveCacheForApiKey(fastHashedSecretKey);
       await expect(authenticateKey(key.secretKey)).rejects.toMatchObject(
-        ownerNotAllowed,
+        keyNotAllowed,
       );
     });
 
@@ -3532,7 +3551,7 @@ describe("AI gateway control plane", () => {
       });
 
       await expect(authenticateKey(key.secretKey)).rejects.toMatchObject(
-        ownerNotAllowed,
+        keyNotAllowed,
       );
     });
   });
