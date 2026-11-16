@@ -1,5 +1,8 @@
 import { type Session } from "next-auth";
 
+import { hasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
+
+/** canManageSessionView reports whether the user created the view or may update its project. */
 export function canManageSessionView({
   session,
   projectId,
@@ -10,8 +13,6 @@ export function canManageSessionView({
   createdBy: string | null;
 }) {
   if (!session?.user) return false;
-  const role = session.user.organizations
-    .flatMap((organization) => organization.projects)
-    .find((project) => project.id === projectId)?.role;
-  return createdBy === session.user.id || role === "OWNER" || role === "ADMIN";
+  if (createdBy === session.user.id) return true;
+  return hasProjectAccess({ session, projectId, scope: "project:update" });
 }
