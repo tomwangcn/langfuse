@@ -153,7 +153,7 @@ export async function getPoliciesForApiKey(
 }
 
 /** getPoliciesForUser loads the policy set a user's roles bind. */
-async function getPoliciesForUser(
+export async function getPoliciesForUser(
   tx: Prisma.TransactionClient,
   userId: string,
 ): Promise<Policy[]> {

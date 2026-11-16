@@ -143,6 +143,7 @@ describe("recordTrpcAccess", () => {
   const nonMember = {
     session: {
       user: { id: "user", organizations: [] } as unknown as Session["user"],
+      policies: [],
     },
     headers: {},
   };
