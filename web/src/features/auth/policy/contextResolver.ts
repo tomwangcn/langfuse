@@ -149,10 +149,15 @@ export async function getPoliciesForApiKey(
   if (scope !== "USER") return [keyPolicies];
   // An empty user set denies a user key whose user is gone.
   if (!userId) return [[], keyPolicies];
-  const userPolicies = toPolicies(
-    await getRolesForPrincipal(prisma, UserId(userId)),
-  );
-  return [userPolicies, keyPolicies];
+  return [await getPoliciesForUser(prisma, userId), keyPolicies];
+}
+
+/** getPoliciesForUser loads the policy set a user's roles bind. */
+async function getPoliciesForUser(
+  tx: Prisma.TransactionClient,
+  userId: string,
+): Promise<Policy[]> {
+  return toPolicies(await getRolesForPrincipal(tx, UserId(userId)));
 }
 
 /**
