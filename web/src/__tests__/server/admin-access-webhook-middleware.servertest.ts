@@ -1,10 +1,5 @@
-import { testFeatureFlags } from "@/src/__tests__/fixtures/feature-flags";
+import { createSession } from "@/src/__tests__/fixtures/session-factory";
 import type { Session } from "next-auth";
-
-// Session fixture sub-object types; casts keep the runtime fixtures unchanged
-// while satisfying newer required fields on the session user type.
-type SessionUser = NonNullable<Session["user"]>;
-type SessionProjects = SessionUser["organizations"][number]["projects"];
 import * as z from "zod";
 import { env } from "@/src/env.mjs";
 
@@ -58,38 +53,29 @@ const sessionOrgId = "session-org-id";
  * Session whose single organization membership is either a regular
  * membership or a support access grant (`supportAccess: true`, VIEWER role).
  */
-const createSession = (
+const staffSession = (
   projects: Array<{ id: string; name?: string }> = [],
   options: { supportAccess?: boolean } = {},
-): Session => ({
-  expires: "1",
-  user: {
-    id: "staff-user-id",
-    email: "staff@langfuse.com",
-    canCreateOrganizations: true,
-    name: "Staff User",
+): Session =>
+  createSession({
+    user: {
+      id: "staff-user-id",
+      email: "staff@langfuse.com",
+      name: "Staff User",
+    },
     organizations: [
       {
         id: sessionOrgId,
         name: "Session Organization",
         role: options.supportAccess ? "VIEWER" : "OWNER",
-        plan: "cloud:hobby",
-        cloudConfig: undefined,
-        metadata: {},
         supportAccess: options.supportAccess ?? false,
         projects: projects.map((project) => ({
           id: project.id,
-          role: options.supportAccess ? "VIEWER" : "OWNER",
-          retentionDays: 30,
-          deletedAt: null,
           name: project.name ?? "Project",
-        })) as SessionProjects,
-      } as SessionUser["organizations"][number],
+        })),
+      },
     ],
-    featureFlags: testFeatureFlags(),
-  },
-  environment: {} as any,
-});
+  });
 
 const createTestCaller = (params: {
   session: Session | null;
@@ -176,7 +162,7 @@ describe("admin access webhook in tRPC authorization middleware", () => {
   it("sends webhook when a project is accessed through a support access grant", async () => {
     const projectId = "support-access-project-id";
     const { caller, mockPrisma } = createTestCaller({
-      session: createSession([{ id: projectId }], { supportAccess: true }),
+      session: staffSession([{ id: projectId }], { supportAccess: true }),
     });
 
     await caller.project({ projectId });
@@ -196,7 +182,7 @@ describe("admin access webhook in tRPC authorization middleware", () => {
   it("does not send webhook for regular project members", async () => {
     const projectId = "member-project-id";
     const { caller } = createTestCaller({
-      session: createSession([{ id: projectId }]),
+      session: staffSession([{ id: projectId }]),
     });
 
     await caller.project({ projectId });
@@ -205,7 +191,7 @@ describe("admin access webhook in tRPC authorization middleware", () => {
   });
 
   it("rejects non-members even when the session carries a legacy admin flag", async () => {
-    const session = createSession([]);
+    const session = staffSession([]);
     const { caller } = createTestCaller({
       session: {
         ...session,
@@ -222,7 +208,7 @@ describe("admin access webhook in tRPC authorization middleware", () => {
   it("sends webhook when a trace is accessed through a support access grant", async () => {
     const projectId = "trace-project-id";
     const { caller } = createTestCaller({
-      session: createSession([{ id: projectId }], { supportAccess: true }),
+      session: staffSession([{ id: projectId }], { supportAccess: true }),
     });
 
     await caller.trace({
@@ -340,7 +326,7 @@ describe("admin access webhook in tRPC authorization middleware", () => {
   it("sends webhook when a session is accessed through a support access grant", async () => {
     const projectId = "session-project-id";
     const { caller, mockPrisma } = createTestCaller({
-      session: createSession([{ id: projectId }], { supportAccess: true }),
+      session: staffSession([{ id: projectId }], { supportAccess: true }),
       traceSession: { public: false },
     });
 
@@ -371,7 +357,7 @@ describe("admin access webhook in tRPC authorization middleware", () => {
 
   it("rejects an empty session id before checking access", async () => {
     const { caller, mockPrisma } = createTestCaller({
-      session: createSession([]),
+      session: staffSession([]),
     });
 
     await expect(

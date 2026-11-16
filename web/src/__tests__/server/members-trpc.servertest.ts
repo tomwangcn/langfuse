@@ -1,19 +1,14 @@
-import { testFeatureFlags } from "@/src/__tests__/fixtures/feature-flags";
+import { createSession } from "@/src/__tests__/fixtures/session-factory";
 import { vi } from "vitest";
 import { appRouter } from "@/src/server/api/root";
 import { createInnerTRPCContext } from "@/src/server/api/trpc";
 import { prisma } from "@langfuse/shared/src/db";
 import { Role, type Plan } from "@langfuse/shared";
 import { entitlementAccess } from "@/src/features/entitlements/constants/entitlements";
-import type { Session } from "next-auth";
 import { createApiKey } from "@langfuse/shared/src/server";
 import { OrganizationId, SystemRoleId, UserId } from "@langfuse/shared/rbac";
 import { env } from "@/src/env.mjs";
 
-// Session fixture sub-object types; casts keep the runtime fixtures unchanged
-// while satisfying newer required fields on the session user type.
-type SessionUser = NonNullable<Session["user"]>;
-type SessionProject = SessionUser["organizations"][number]["projects"][number];
 import { v4 as uuidv4 } from "uuid";
 import type * as SharedServer from "@langfuse/shared/src/server";
 import type * as MultiTenantSsoUtils from "@/src/ee/features/multi-tenant-sso/utils";
@@ -75,58 +70,48 @@ async function createTestOrg(plan: Plan) {
   return { org, project, ownerUser, plan };
 }
 
-function createSession(
+function memberSession(
   ownerUser: { id: string; email: string | null; name: string | null },
   org: { id: string; name: string },
   project: { id: string; name: string },
   plan: Plan,
   roles: { orgRole?: Role; projectRole?: Role } = {},
-): Session {
+) {
   const orgRole = roles.orgRole ?? Role.OWNER;
   const projectRole = roles.projectRole ?? Role.OWNER;
 
-  return {
-    expires: "1",
+  return createSession({
     user: {
       id: ownerUser.id,
       email: ownerUser.email,
       name: ownerUser.name,
-      canCreateOrganizations: true,
-      organizations: [
-        {
-          id: org.id,
-          name: org.name,
-          role: orgRole,
-          plan: plan,
-          cloudConfig: undefined,
-          metadata: {},
-          aiFeaturesEnabled: false,
-          aiTelemetryEnabled: true,
-          projects: [
-            {
-              id: project.id,
-              role: projectRole,
-              retentionDays: 30,
-              deletedAt: null,
-              name: project.name,
-              metadata: {},
-            } as SessionProject,
-          ],
-        },
-      ],
-      featureFlags: testFeatureFlags(),
     },
+    organizations: [
+      {
+        id: org.id,
+        name: org.name,
+        role: orgRole,
+        plan: plan,
+        aiTelemetryEnabled: true,
+        projects: [
+          {
+            id: project.id,
+            role: projectRole,
+            name: project.name,
+          },
+        ],
+      },
+    ],
     environment: {
-      enableExperimentalFeatures: false,
       selfHostedInstancePlan: plan,
     },
-  };
+  });
 }
 
 async function prepare(plan: Plan) {
   const { org, project, ownerUser } = await createTestOrg(plan);
 
-  const session = createSession(ownerUser, org, project, plan);
+  const session = memberSession(ownerUser, org, project, plan);
   const ctx = createInnerTRPCContext({ session, headers: {} });
   const caller = appRouter.createCaller({ ...ctx, prisma });
 
@@ -458,7 +443,7 @@ describe("membersRouter.allInvitesFromProject", () => {
       ],
     });
 
-    const projectOnlySession = createSession(
+    const projectOnlySession = memberSession(
       projectOnlyUser,
       org,
       project,
@@ -667,7 +652,7 @@ describe("membersRouter - ownership changes", () => {
     await prisma.organizationMembership.create({
       data: { userId: admin.id, orgId: org.id, role: Role.ADMIN },
     });
-    const session = createSession(admin, org, project, "cloud:team", {
+    const session = memberSession(admin, org, project, "cloud:team", {
       orgRole: Role.ADMIN,
       projectRole: Role.ADMIN,
     });
@@ -704,7 +689,7 @@ describe("membersRouter - ownership changes", () => {
 
   it("lets an org owner grant project OWNER whatever their own project role", async () => {
     const { org, project, ownerUser } = await createTestOrg("cloud:team");
-    const session = createSession(ownerUser, org, project, "cloud:team", {
+    const session = memberSession(ownerUser, org, project, "cloud:team", {
       orgRole: Role.OWNER,
       projectRole: Role.VIEWER,
     });
@@ -1247,7 +1232,7 @@ describe("membersRouter.create - project organization consistency", () => {
       data: { userId: caller.id, orgId: targetOrg.id, role: Role.VIEWER },
     });
 
-    const session = createSession(
+    const session = memberSession(
       caller,
       targetOrg,
       targetProject,
@@ -1258,7 +1243,7 @@ describe("membersRouter.create - project organization consistency", () => {
       },
     );
     session.user!.organizations.push(
-      ...createSession(caller, callerOrg, callerProject, "cloud:team").user!
+      ...memberSession(caller, callerOrg, callerProject, "cloud:team").user!
         .organizations,
     );
     const ctx = createInnerTRPCContext({ session, headers: {} });
@@ -1485,7 +1470,7 @@ describe("membersRouter - AI_GATEWAY role", () => {
       },
     });
     const ctx = createInnerTRPCContext({
-      session: createSession(projectOnlyUser, org, project, "cloud:core", {
+      session: memberSession(projectOnlyUser, org, project, "cloud:core", {
         orgRole: Role.NONE,
         projectRole: Role.MEMBER,
       }),

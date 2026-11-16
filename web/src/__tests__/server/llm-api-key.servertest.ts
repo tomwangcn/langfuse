@@ -8,8 +8,6 @@ vi.mock("@langfuse/shared/src/server", async () => {
     generateLLMText: vi.fn(),
   };
 });
-
-import { testFeatureFlags } from "@/src/__tests__/fixtures/feature-flags";
 import * as auditLogs from "@/src/features/audit-logs/auditLog";
 import type { Session } from "next-auth";
 import { BEDROCK_USE_DEFAULT_CREDENTIALS, LLMAdapter } from "@langfuse/shared";
@@ -31,6 +29,7 @@ import {
   EvaluatorBlockSource,
   generateLLMText,
 } from "@langfuse/shared/src/server";
+import { createSession } from "@/src/__tests__/fixtures/session-factory";
 
 const mockGenerateLLMText = vi.mocked(generateLLMText);
 
@@ -43,24 +42,15 @@ describe("llmApiKey.all RPC", () => {
   const createCallerForProjectRole = (
     projectRole: "ADMIN" | "MEMBER" | "VIEWER",
   ) => {
-    const limitedSession: Session = {
-      ...session,
-      user: {
-        ...session.user!,
-        organizations: [
-          {
-            ...session.user!.organizations[0],
-            role: "MEMBER",
-            projects: [
-              {
-                ...session.user!.organizations[0].projects[0],
-                role: projectRole,
-              },
-            ],
-          },
-        ],
-      },
-    };
+    const limitedSession = createSession({
+      organizations: [
+        {
+          id: orgId,
+          role: "MEMBER",
+          projects: [{ id: projectId, role: projectRole, retentionDays: null }],
+        },
+      ],
+    });
 
     const limitedCtx = createInnerTRPCContext({
       session: limitedSession,
@@ -77,40 +67,15 @@ describe("llmApiKey.all RPC", () => {
     mockFinalizeEvaluatorBlocks.mockReset().mockResolvedValue(undefined);
     mockGenerateLLMText.mockReset().mockResolvedValue({} as never);
 
-    session = {
-      expires: "1",
-      user: {
-        id: "user-1",
-        name: "Demo User",
-        canCreateOrganizations: true,
-        organizations: [
-          {
-            id: orgId,
-            role: "OWNER",
-            plan: "cloud:hobby",
-            cloudConfig: undefined,
-            name: "Test Organization",
-            metadata: {},
-            aiFeaturesEnabled: false,
-            aiTelemetryEnabled: false,
-            projects: [
-              {
-                id: projectId,
-                role: "ADMIN",
-                name: "Test Project",
-                deletedAt: null,
-                retentionDays: null,
-                hasTraces: false,
-                metadata: {},
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          },
-        ],
-        featureFlags: testFeatureFlags(),
-      },
-      environment: {} as any,
-    };
+    session = createSession({
+      organizations: [
+        {
+          id: orgId,
+          role: "OWNER",
+          projects: [{ id: projectId, role: "ADMIN", retentionDays: null }],
+        },
+      ],
+    });
 
     const ctx = createInnerTRPCContext({ session, headers: {} });
     caller = appRouter.createCaller({ ...ctx, prisma });
