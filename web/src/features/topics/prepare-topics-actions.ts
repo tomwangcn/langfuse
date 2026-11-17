@@ -1,5 +1,12 @@
 import { type TopicRuleMap } from "./topic-maps";
-import { Eye, History, Settings, type IconComponent } from "@langfuse/icons";
+import {
+  CalendarRange,
+  Eye,
+  History,
+  Plus,
+  Settings,
+  type IconComponent,
+} from "@langfuse/icons";
 
 export type AutomaticProcessingState =
   | { status: "unconfigured" }
@@ -8,7 +15,7 @@ export type AutomaticProcessingState =
   | { status: "paused"; shortLabel: string };
 
 type TopicAction = {
-  id: "configure" | "history";
+  id: "new-map" | "new-snapshot" | "configure" | "history";
   label: string;
   icon: IconComponent;
   onSelect: () => void;
@@ -58,7 +65,8 @@ export function refreshMapDisabledReason({
 /**
  * One action policy for the Edit map button, the map picker and both
  * overflow-menu presentations. Creating and refreshing maps live in the map
- * picker only, so the overflow menu keeps page-wide actions.
+ * picker, so the overflow menu keeps page-wide actions; it offers creating
+ * only while the picker is hidden, e.g. during onboarding.
  */
 export function prepareTopicsActions({
   automaticProcessing,
@@ -71,6 +79,7 @@ export function prepareTopicsActions({
   mapDisabledReason,
   onEditRun,
   refreshMap,
+  mapPickerShown,
   showUnassigned,
   onShowUnassignedChange,
 }: {
@@ -88,6 +97,8 @@ export function prepareTopicsActions({
   onEditRun?: () => void;
   /** Refreshes the selected map; absent for snapshots. */
   refreshMap?: { onSelect: () => void; disabledReason?: string };
+  /** The map picker, which carries New map and New snapshot, is on screen. */
+  mapPickerShown: boolean;
   showUnassigned: boolean;
   onShowUnassignedChange: (show: boolean) => void;
 }) {
@@ -133,6 +144,24 @@ export function prepareTopicsActions({
           : createDisabledReason(state),
       }
     : null;
+  if (!mapPickerShown) {
+    const create: TopicAction[] = [];
+    if (newMap)
+      create.push({
+        id: "new-map",
+        label: "New live map",
+        icon: Plus,
+        ...newMap,
+      });
+    if (newSnapshot)
+      create.push({
+        id: "new-snapshot",
+        label: "New snapshot",
+        icon: CalendarRange,
+        ...newSnapshot,
+      });
+    menu.unshift(...create);
+  }
   const editRun = onEditRun
     ? { onSelect: onEditRun, disabledReason: editDisabledReason }
     : null;

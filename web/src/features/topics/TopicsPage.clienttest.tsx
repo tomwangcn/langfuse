@@ -477,6 +477,23 @@ it.each([
   );
 });
 
+it("offers creating maps in the menu while onboarding hides the map picker", async () => {
+  withSummaries();
+  // Configured but off, and no summaries stored yet.
+  state.settings = { ...state.settings, enabled: false };
+  state.hasStoredSummaries = false;
+  render(<TopicsPage />, { wrapper: LayerProvider });
+  expect(screen.queryByRole("button", { name: /Topic map:/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Topics actions" }));
+  const items = await screen.findAllByRole("menuitem");
+  expect(items.map((item) => item.textContent)).toEqual([
+    "New live map",
+    "New snapshot",
+    "History",
+    "Settings",
+  ]);
+});
+
 it.each([
   { access: "with topics:CUD", canWrite: true },
   { access: "without topics:CUD", canWrite: false },

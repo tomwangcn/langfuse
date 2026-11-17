@@ -14,6 +14,7 @@ const defaultArgs: ComponentProps<typeof TopicsHeaderActions> = {
     onNewMap: fn(),
     onNewSnapshot: fn(),
     onEditRun: fn(),
+    mapPickerShown: true,
     showUnassigned: true,
     onShowUnassignedChange: fn(),
   }),

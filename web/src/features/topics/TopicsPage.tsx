@@ -551,6 +551,9 @@ function TopicsWorkspaceContent({
                 outcome: analysisFacet?.outcome,
               }
             : null;
+        // Onboarding hides both picker placements.
+        const mapPickerShown =
+          !showOnboarding && Boolean(maps.data && mapSelection);
         const actions = prepareTopicsActions({
           automaticProcessing,
           canWrite,
@@ -582,11 +585,12 @@ function TopicsWorkspaceContent({
           onNewMap: () => openSliceDialog({ kind: "map" }),
           onNewSnapshot: () => openSliceDialog({ kind: "snapshot" }),
           mapDisabledReason: mapLimitReason,
+          mapPickerShown,
           showUnassigned,
           onShowUnassignedChange: setShowUnassigned,
         });
         const mapPicker =
-          maps.data && mapSelection ? (
+          maps.data && mapSelection && mapPickerShown ? (
             <TopicsMapPicker
               projectId={projectId}
               overview={maps.data}
