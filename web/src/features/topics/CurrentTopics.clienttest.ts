@@ -127,6 +127,7 @@ describe("current Topics query", () => {
           {
             facetVersion: 1,
             traceId: "trace-a",
+            traceName: "assistant-request",
             unitStartTime: timeRange.from.toISOString(),
             summary: "Result published at completion",
             outcome: "not_applicable",
@@ -197,6 +198,7 @@ describe("current Topics query", () => {
 describe("trace selection", () => {
   const row = (traceId: string) => ({
     traceId,
+    traceName: "assistant-request",
     unitStartTime: timeRange.from.toISOString(),
     facetVersion: 1,
     summary: "",

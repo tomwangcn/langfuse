@@ -43,6 +43,7 @@ const points = clusters.flatMap((cluster, clusterIndex) =>
         ? `${topic.name}: user asked about case ${index + 1} and expected a quicker resolution than they got.`
         : `Unrelated request ${index + 1} that did not fit any topic.`,
       topicId: topic?.id ?? null,
+      traceName: "assistant-request",
       unitStartTime: "2026-10-01T00:00:00.000Z",
       outcome: topic ? ("assigned" as const) : ("outlier" as const),
       x: cluster.x + gaussian(random) * spread,
@@ -57,6 +58,7 @@ const rows = points.map((point, index) => ({
   topicName: topics.find((topic) => topic.id === point.topicId)?.name ?? null,
   outcome: point.outcome,
   facetVersion: 1,
+  traceName: "assistant-request",
   unitStartTime: new Date(Date.now() - index * 7 * 60_000).toISOString(),
 }));
 const facet = storyFacet(

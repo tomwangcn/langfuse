@@ -96,28 +96,26 @@ export function TopicTraceList({
   );
   const columns: LangfuseColumnDef<FacetRow>[] = [
     {
-      accessorKey: "traceId",
-      header: () => <span className={FIRST_CELL}>Trace ID</span>,
-      size: 208,
-      minSize: 128,
-      cell: ({ row }) => (
-        <span
-          className={cn(
-            "text-link block truncate font-mono text-xs",
-            FIRST_CELL,
-          )}
-          title={row.original.traceId}
-        >
-          {row.original.traceId}
-        </span>
-      ),
+      accessorKey: "summary",
+      header: () => <span className={FIRST_CELL}>Summary</span>,
+      size: 300,
+      minSize: 240,
+      isFlexWidth: true,
+      cell: ({ row }) => {
+        const summary = row.original.summary || "No applicable summary.";
+        return (
+          <p className={cn("truncate", FIRST_CELL)} title={summary}>
+            {summary}
+          </p>
+        );
+      },
     },
     ...(topicColors
       ? [
           {
             accessorKey: "topicName",
             header: () => <span className={CELL}>Topic</span>,
-            size: 200,
+            size: 240,
             minSize: 120,
             cell: ({ row }) => {
               // Outliers read Unassigned, as in the topic rows and on the map.
@@ -147,19 +145,23 @@ export function TopicTraceList({
         ]
       : []),
     {
-      accessorKey: "summary",
-      header: () => <span className={CELL}>Summary</span>,
-      size: 300,
-      minSize: 180,
-      isFlexWidth: true,
-      cell: ({ row }) => {
-        const summary = row.original.summary || "No applicable summary.";
-        return (
-          <p className={cn("truncate", CELL)} title={summary}>
-            {summary}
-          </p>
-        );
-      },
+      accessorKey: "traceName",
+      header: () => <span className={CELL}>Trace name</span>,
+      size: 128,
+      minSize: 96,
+      // Rows open the trace peek, so the name leads; unnamed traces show their ID.
+      cell: ({ row }) => (
+        <span
+          className={cn(
+            "text-link block truncate",
+            row.original.traceName ? "text-sm" : "font-mono text-xs",
+            CELL,
+          )}
+          title={row.original.traceId}
+        >
+          {row.original.traceName || row.original.traceId}
+        </span>
+      ),
     },
   ];
   return (

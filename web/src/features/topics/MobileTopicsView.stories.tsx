@@ -40,6 +40,7 @@ const rows = [
           : `Invoice question ${index + 1}: the customer needs help understanding a charge and switching their subscription to annual billing.`,
       outcome: "assigned" as const,
       facetVersion: 1,
+      traceName: "assistant-request",
       unitStartTime: "2026-10-20T12:00:00.000Z",
     })),
   ),
@@ -50,6 +51,7 @@ const rows = [
     summary: "A new request that has not been classified yet.",
     outcome: "awaiting_map" as const,
     facetVersion: 1,
+    traceName: "assistant-request",
     unitStartTime: "2026-10-20T12:00:00.000Z",
   },
 ];
@@ -588,6 +590,7 @@ export const KeepPageAfterRefresh = meta.story({
             summary: "A newer invoice question sorted ahead of the selection.",
             outcome: "assigned" as const,
             facetVersion: 1,
+            traceName: "assistant-request",
             unitStartTime: "2026-10-21T12:00:00.000Z",
           },
           ...rows,

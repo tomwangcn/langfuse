@@ -25,6 +25,7 @@ const rows = Array.from({ length: 120 }, (_, index) => ({
   topicName: index % 2 === 0 ? "Billing questions" : null,
   outcome: index % 2 === 0 ? "assigned" : "outlier",
   facetVersion: 1,
+  traceName: "assistant-request",
   unitStartTime: "2026-10-01T00:00:00.000Z",
 }));
 const facet = storyFacet(
@@ -43,6 +44,7 @@ const mapData = {
   points: [0, 60, 61, 119].map((index, position) => ({
     traceId: rows[index].traceId,
     summary: rows[index].summary,
+    traceName: "assistant-request",
     unitStartTime: rows[index].unitStartTime,
     topicId: rows[index].topicId,
     outcome: index % 2 === 0 ? ("assigned" as const) : ("outlier" as const),

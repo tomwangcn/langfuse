@@ -21,6 +21,7 @@ export function prepareTopicGrid(
         point.traceId,
         {
           traceId: point.traceId,
+          traceName: "",
           summary: point.summary,
           unitStartTime: point.unitStartTime,
           topicId: point.topicId,

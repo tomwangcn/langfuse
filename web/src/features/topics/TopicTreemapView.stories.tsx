@@ -1,4 +1,4 @@
-import { type ComponentProps } from "react";
+import { type ComponentProps, useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { PINCH_ZOOM_RATE } from "@/src/utils/panZoomGestures";
 import preview from "../../../.storybook/preview";
@@ -41,6 +41,7 @@ const assignedRows = topics.flatMap((topic) =>
     topicName: topic.name,
     outcome: "assigned" as const,
     facetVersion: 1,
+    traceName: "assistant-request",
     unitStartTime: new Date(Date.now() - index * 7 * 60_000).toISOString(),
   })),
 );
@@ -54,6 +55,7 @@ const rows = [
     topicName: null,
     outcome: "outlier" as const,
     facetVersion: 1,
+    traceName: "assistant-request",
     unitStartTime: new Date(Date.now() - index * 11 * 60_000).toISOString(),
   })),
 ];
@@ -67,6 +69,12 @@ const defaultArgs: ComponentProps<typeof TopicTreemapView> = {
   projectId: "storybook-topics",
   facet,
   useTraces: staticTopicTraces(rows),
+  traceFilters: {
+    filters: [],
+    setFilters: fn(),
+    searchQuery: null,
+    setSearchQuery: fn(),
+  },
   peekView: {
     itemType: "TRACE",
     tableName: "topics-topic-traces",
@@ -80,7 +88,7 @@ const meta = preview.meta({
   args: defaultArgs,
   render: (args) => (
     <div className="flex h-screen flex-col p-2">
-      <TopicTreemapView {...args} />
+      <ControlledTreemap {...args} />
     </div>
   ),
 });
@@ -99,6 +107,7 @@ const manyUnassignedRows = [
     topicName: null,
     outcome: "outlier" as const,
     facetVersion: 1,
+    traceName: "assistant-request",
     unitStartTime: new Date(Date.now() - index * 3 * 60_000).toISOString(),
   })),
 ];
@@ -161,6 +170,7 @@ const manyRows = manyTopics.flatMap((topic) =>
     topicName: topic.name,
     outcome: "assigned" as const,
     facetVersion: 1,
+    traceName: "assistant-request",
     unitStartTime: new Date(Date.now() - index * 4 * 60_000).toISOString(),
   })),
 );
@@ -253,23 +263,34 @@ export const LongNamesOnShortTiles = meta.story({
   },
   render: (args) => (
     <div className="flex flex-col" style={{ width: 1736, height: 1000 }}>
-      <TopicTreemapView {...args} />
+      <ControlledTreemap {...args} />
     </div>
   ),
 });
 
 export const SelectTopic = meta.story({
-  name: "(Test) Selecting a tile lists its traces",
+  name: "(Test) Selecting a tile lists its traces, selecting it again lists all",
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const tile = await canvas.findByRole("button", {
       name: "Trace cost analysis, 21 traces",
     });
+    const list = within(canvas.getByRole("region", { name: "Topic traces" }));
+    await expect(
+      list.getByRole("heading", { name: "All traces" }),
+    ).toBeVisible();
+    // The list remounts per selection, so it is looked up again each time.
+    const traceList = () =>
+      within(canvas.getByRole("region", { name: "Topic traces" }));
     await userEvent.click(tile);
     await expect(tile).toHaveAttribute("aria-pressed", "true");
-    const list = canvas.getByRole("region", { name: "Topic traces" });
     await expect(
-      within(list).getByRole("heading", { name: /Trace cost analysis/ }),
+      await traceList().findByRole("heading", { name: /Trace cost analysis/ }),
+    ).toBeVisible();
+    await userEvent.click(tile);
+    await expect(tile).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      await traceList().findByRole("heading", { name: "All traces" }),
     ).toBeVisible();
   },
 });
@@ -324,14 +345,18 @@ export const DescriptionTooltipWhenClipped = meta.story({
   name: "(Test) Hover shows the full text only when clipped",
   render: (args) => (
     <div className="flex flex-col" style={{ width: 720, height: 900 }}>
-      <TopicTreemapView {...args} />
+      <ControlledTreemap {...args} />
     </div>
   ),
   play: async ({ canvasElement }) => {
-    const list = within(
-      within(canvasElement).getByRole("region", { name: "Topic traces" }),
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      await canvas.findByRole("button", {
+        name: "Langfuse user assistance, 55 traces",
+      }),
     );
-    const title = list.getByRole("heading", {
+    const list = within(canvas.getByRole("region", { name: "Topic traces" }));
+    const title = await list.findByRole("heading", {
       name: "Langfuse user assistance",
     });
     const description = list.getByText(LONG_DESCRIPTION);
@@ -343,3 +368,15 @@ export const DescriptionTooltipWhenClipped = meta.story({
     await expect(title).not.toHaveAttribute("title");
   },
 });
+
+/** The search bar holds the picked tile, so stories keep its state. */
+function ControlledTreemap(args: ComponentProps<typeof TopicTreemapView>) {
+  const [filters, setFilters] = useState(args.traceFilters.filters);
+  const [searchQuery, setSearchQuery] = useState(args.traceFilters.searchQuery);
+  return (
+    <TopicTreemapView
+      {...args}
+      traceFilters={{ filters, setFilters, searchQuery, setSearchQuery }}
+    />
+  );
+}
