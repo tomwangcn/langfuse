@@ -599,6 +599,7 @@ function TopicsWorkspaceContent({
                 map: actions.newMap,
                 snapshot: actions.newSnapshot,
               }}
+              refresh={actions.refreshMap}
             />
           ) : null;
         const now = Date.now();

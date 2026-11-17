@@ -5,6 +5,7 @@ import preview from "../../../.storybook/preview";
 import { TopicsMapPicker, type UsePreviewTopics } from "./TopicsMapPicker";
 import { TopicMapStrip } from "./TopicMapStrip";
 import { TopicRuleBuildingState } from "./TopicRuleBuildingState";
+import { refreshMapDisabledReason } from "./prepare-topics-actions";
 import { type TopicMapSelection, type TopicMapsOverview } from "./topic-maps";
 
 const now = Date.parse("2026-11-05T12:00:00.000Z");
@@ -117,7 +118,14 @@ const useStoryPreviewTopics: UsePreviewTopics = (_projectId, map) => ({
 });
 
 /** The Topics page header flow: pick a map, see its strip, or the building state of a new map. */
-function MapSwitcher({ initial }: { initial: TopicMapSelection }) {
+function MapSwitcher({
+  initial,
+  refreshDisabledReason,
+}: {
+  initial: TopicMapSelection;
+  /** Why the selected live map can't be refreshed now. */
+  refreshDisabledReason?: string;
+}) {
   const [selection, setSelection] = useState(initial);
   const selectedRule =
     selection.kind === "rule"
@@ -141,6 +149,10 @@ function MapSwitcher({ initial }: { initial: TopicMapSelection }) {
           create={{
             map: { onSelect: fn() },
             snapshot: { onSelect: fn() },
+          }}
+          refresh={{
+            onSelect: fn(),
+            disabledReason: refreshDisabledReason,
           }}
         />
       </div>
@@ -246,5 +258,37 @@ export const TestPausedLast = meta.story({
       )
       .map((text) => text.split(/\d| ·/)[0]!.trim());
     await expect(names.at(-1)).toMatch(/^Legacy RAG/);
+  },
+});
+
+export const TestRefreshCooldown = meta.story({
+  name: "(Test) Refresh waits out its cooldown",
+  args: {
+    refreshDisabledReason: refreshMapDisabledReason({
+      canWrite: true,
+      state: { status: "on" },
+      rule: {
+        enabled: true,
+        refresh: {
+          availableAt: new Date(now + 10 * 60_000).toISOString(),
+          running: false,
+        },
+      },
+      setupActive: false,
+      now,
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const picker = await openPicker(canvasElement);
+    const refresh = picker.getByRole("button", {
+      name: /^Refresh “All traces”/,
+    });
+    await expect(refresh).toBeDisabled();
+    // Touch screens show no tooltip, so the reason must be on screen.
+    await expect(
+      within(refresh).getByText(
+        "Refreshed recently. Available again in 10 min.",
+      ),
+    ).toBeVisible();
   },
 });

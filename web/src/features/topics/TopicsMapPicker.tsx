@@ -3,6 +3,7 @@ import {
   CalendarRange,
   Check,
   Plus,
+  RefreshCw,
   Search,
   type IconComponent,
 } from "@langfuse/icons";
@@ -37,6 +38,7 @@ export function TopicsMapPicker({
   usePreviewTopics,
   processingOn,
   create,
+  refresh,
 }: {
   projectId: string;
   overview: TopicMapsOverview;
@@ -48,7 +50,9 @@ export function TopicsMapPicker({
   /** Automatic analysis is on for the project; live runs show Paused otherwise. */
   processingOn: boolean;
   /** Footer entries for New map and New snapshot; null hides one. */
-  create?: { map: CreateEntry | null; snapshot: CreateEntry | null };
+  create?: { map: FooterEntry | null; snapshot: FooterEntry | null };
+  /** Reclusters the selected live map now; ignored while a snapshot is selected. */
+  refresh?: FooterEntry | null;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -62,6 +66,8 @@ export function TopicsMapPicker({
       ? overview.analyses.find((analysis) => analysis.id === selection.id)
       : undefined;
   const selectedName = selectedRule?.name ?? selectedAnalysis?.label ?? "";
+  const refreshEntry = selectedRule ? refresh : null;
+  const hasCreate = Boolean(create && (create.map || create.snapshot));
   const query = search.trim().toLowerCase();
   // Paused maps sort below active ones; order is otherwise kept.
   const rules = overview.rules
@@ -163,18 +169,30 @@ export function TopicsMapPicker({
                 </p>
               )}
             </div>
-            {create && (create.map || create.snapshot) && (
+            {(refreshEntry || hasCreate) && (
               <div className="mt-auto flex flex-col border-t p-1.5">
-                {create.map && (
-                  <CreateButton
+                {refreshEntry && (
+                  <FooterButton
+                    entry={refreshEntry}
+                    icon={RefreshCw}
+                    label={`Refresh “${selectedName}”`}
+                    description="Recluster its topics now instead of waiting for the nightly update."
+                    onChosen={() => changeOpen(false)}
+                  />
+                )}
+                {refreshEntry && hasCreate && (
+                  <div className="-mx-1.5 my-1.5 border-t" />
+                )}
+                {create?.map && (
+                  <FooterButton
                     entry={create.map}
                     icon={Plus}
                     label="New live map"
                     onChosen={() => changeOpen(false)}
                   />
                 )}
-                {create.snapshot && (
-                  <CreateButton
+                {create?.snapshot && (
+                  <FooterButton
                     entry={create.snapshot}
                     icon={CalendarRange}
                     label="New snapshot"
@@ -236,19 +254,23 @@ export function TopicsMapPicker({
   );
 }
 
-type CreateEntry = { onSelect: () => void; disabledReason?: string };
+type FooterEntry = { onSelect: () => void; disabledReason?: string };
 
-function CreateButton({
+function FooterButton({
   entry,
   icon: Icon,
   label,
+  description,
   onChosen,
 }: {
-  entry: CreateEntry;
+  entry: FooterEntry;
   icon: IconComponent;
   label: string;
+  /** A second line saying what the entry does; a disabled entry shows its reason there instead. */
+  description?: string;
   onChosen: () => void;
 }) {
+  const secondLine = description ? (entry.disabledReason ?? description) : null;
   const button = (
     <button
       type="button"
@@ -257,13 +279,24 @@ function CreateButton({
         onChosen();
         entry.onSelect();
       }}
-      className="hover:bg-accent focus-visible:bg-accent flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm focus-visible:outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
+      className="hover:bg-accent focus-visible:bg-accent flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-sm focus-visible:outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
     >
-      <Icon size="base" color="default" aria-hidden />
-      {label}
+      {/* Centered on the label's first line, not on a two-line entry. */}
+      <span className="flex h-5 shrink-0 items-center">
+        <Icon size="base" color="default" aria-hidden />
+      </span>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="truncate" title={label}>
+          {label}
+        </span>
+        {secondLine && (
+          <span className="text-muted-foreground text-xs">{secondLine}</span>
+        )}
+      </span>
     </button>
   );
-  if (!entry.disabledReason) return button;
+  // A reason already on the second line needs no tooltip.
+  if (!entry.disabledReason || secondLine) return button;
   return (
     // Disabled buttons fire no pointer events, so the tooltip listens on a wrapper.
     <Tooltip label={entry.disabledReason}>

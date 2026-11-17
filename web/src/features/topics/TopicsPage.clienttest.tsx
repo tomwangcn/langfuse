@@ -237,6 +237,8 @@ vi.mock("@/src/utils/api", () => ({
         }),
       },
       analysisResults: { useQuery: () => ({}) },
+      // The map picker's preview pane.
+      currentResults: { useQuery: () => ({ isLoading: false }) },
       retry: {
         useMutation: ({ onSuccess }: { onSuccess: () => void }) => ({
           mutate: (input: unknown) => {
@@ -431,16 +433,12 @@ it.each([
   },
 );
 
-it("puts New live map and New snapshot first in the menu", async () => {
+it("leaves creating and refreshing maps to the map picker, not the menu", async () => {
   withSummaries();
   render(<TopicsPage />, { wrapper: LayerProvider });
   fireEvent.click(screen.getByRole("button", { name: "Topics actions" }));
   const items = await screen.findAllByRole("menuitem");
-  // The selected live map adds Refresh map after the create entries.
   expect(items.map((item) => item.textContent)).toEqual([
-    "New live map",
-    "New snapshot",
-    expect.stringMatching(/^Refresh map/),
     "History",
     "Settings",
   ]);
@@ -477,21 +475,40 @@ it.each([
   expect(items.some((item) => item.textContent?.startsWith("Edit map"))).toBe(
     false,
   );
-  // Every action stays visible; without write access it is disabled with a reason.
-  for (const label of ["New live map", "New snapshot"]) {
-    const item = items.find((candidate) =>
-      candidate.textContent?.startsWith(label),
-    );
-    expect(item).toBeDefined();
-    expect(item!.getAttribute("aria-disabled")).toBe(canWrite ? null : "true");
-    expect(item!.getAttribute("title")).toBe(
-      canWrite ? null : "You need permission to edit Topics.",
-    );
-    expect(item!.textContent).toBe(
-      canWrite ? label : `${label}You need permission to edit Topics.`,
-    );
-  }
 });
+
+it.each([
+  { access: "with topics:CUD", canWrite: true },
+  { access: "without topics:CUD", canWrite: false },
+])(
+  "offers refreshing and creating maps in the map picker $access",
+  async ({ canWrite }) => {
+    withSummaries();
+    state.canWrite = canWrite;
+    // A refresh needs automatic processing on.
+    state.settings = { ...state.settings, enabled: true };
+    render(<TopicsPage />, { wrapper: LayerProvider });
+    fireEvent.click(screen.getByRole("button", { name: "Topic map: Rule" }));
+    const picker = within(
+      await screen.findByRole("dialog", { name: "Topic maps" }),
+    );
+    // Every entry stays visible; without write access it is disabled.
+    for (const name of [/^Refresh “Rule”/, /^New live map/, /^New snapshot/]) {
+      expect(picker.getByRole("button", { name })).toHaveProperty(
+        "disabled",
+        !canWrite,
+      );
+    }
+    // The refresh entry says what it does, or why it can't run, on screen.
+    expect(
+      picker.getByText(
+        canWrite
+          ? "Recluster its topics now instead of waiting for the nightly update."
+          : "You need permission to edit Topics.",
+      ),
+    ).toBeInTheDocument();
+  },
+);
 
 it("shows the setup landing until the project's first stored summary exists", () => {
   state.hasStoredSummaries = false;

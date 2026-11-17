@@ -1,13 +1,5 @@
 import { type TopicRuleMap } from "./topic-maps";
-import {
-  CalendarRange,
-  Eye,
-  History,
-  Plus,
-  RefreshCw,
-  Settings,
-  type IconComponent,
-} from "@langfuse/icons";
+import { Eye, History, Settings, type IconComponent } from "@langfuse/icons";
 
 export type AutomaticProcessingState =
   | { status: "unconfigured" }
@@ -16,7 +8,7 @@ export type AutomaticProcessingState =
   | { status: "paused"; shortLabel: string };
 
 type TopicAction = {
-  id: "new-map" | "new-snapshot" | "refresh" | "configure" | "history";
+  id: "configure" | "history";
   label: string;
   icon: IconComponent;
   onSelect: () => void;
@@ -63,7 +55,11 @@ export function refreshMapDisabledReason({
   return undefined;
 }
 
-/** One action policy for the Edit map button and both overflow-menu presentations. */
+/**
+ * One action policy for the Edit map button, the map picker and both
+ * overflow-menu presentations. Creating and refreshing maps live in the map
+ * picker only, so the overflow menu keeps page-wide actions.
+ */
 export function prepareTopicsActions({
   automaticProcessing,
   canWrite,
@@ -97,16 +93,7 @@ export function prepareTopicsActions({
 }) {
   const { state } = automaticProcessing;
   const editDisabledReason = canWrite ? undefined : NO_WRITE_ACCESS;
-  const menu: TopicAction[] = [];
-  if (refreshMap)
-    menu.push({
-      id: "refresh",
-      label: "Refresh map",
-      icon: RefreshCw,
-      disabledReason: refreshMap.disabledReason,
-      onSelect: refreshMap.onSelect,
-    });
-  menu.push(
+  const menu: TopicAction[] = [
     {
       id: "history",
       label: "History",
@@ -122,7 +109,7 @@ export function prepareTopicsActions({
         : "Topics settings are still loading.",
       onSelect: onConfigure,
     },
-  );
+  ];
   const display = {
     id: "show-unassigned",
     label: "Show unassigned",
@@ -146,20 +133,6 @@ export function prepareTopicsActions({
           : createDisabledReason(state),
       }
     : null;
-  if (newSnapshot)
-    menu.unshift({
-      id: "new-snapshot",
-      label: "New snapshot",
-      icon: CalendarRange,
-      ...newSnapshot,
-    });
-  if (newMap)
-    menu.unshift({
-      id: "new-map",
-      label: "New live map",
-      icon: Plus,
-      ...newMap,
-    });
   const editRun = onEditRun
     ? { onSelect: onEditRun, disabledReason: editDisabledReason }
     : null;
@@ -167,6 +140,7 @@ export function prepareTopicsActions({
     editRun,
     newMap,
     newSnapshot,
+    refreshMap: refreshMap ?? null,
     menu,
     display,
   };

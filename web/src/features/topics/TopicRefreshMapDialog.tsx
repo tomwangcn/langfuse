@@ -21,8 +21,8 @@ export function TopicRefreshMapDialog({
   });
   return (
     <Dialog
-      title="Refresh map"
-      text="Topics may be renamed, merged or split. Naming uses your clustering model as defined in topic settings."
+      title={`Refresh “${rule.name}”`}
+      text="Reclusters this map's topics now instead of waiting for the nightly update. Topics may be renamed, merged or split. Naming uses your clustering model as defined in topic settings."
       actions={[
         {
           label: "Refresh",
