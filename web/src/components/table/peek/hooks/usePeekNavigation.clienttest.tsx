@@ -84,7 +84,9 @@ describe("usePeekNavigation expandPeek", () => {
     expect(mockPush).toHaveBeenCalledTimes(1);
     const target = mockPush.mock.calls[0][0] as string;
     expect(target.startsWith("/project/p1/traces/trace-1?")).toBe(true);
-    expect(target).toContain("timestamp=2026-07-14T19:47:57.703Z");
+    expect(
+      new URL(target, window.location.origin).searchParams.get("timestamp"),
+    ).toBe("2026-07-14T19:47:57.703Z");
   });
 
   it("without a reader, expand forwards params verbatim (non-trace peeks unchanged)", () => {
@@ -108,6 +110,33 @@ describe("usePeekNavigation expandPeek", () => {
     const target = mockPush.mock.calls[0][0] as string;
     expect(target.startsWith("/project/p1/traces/trace-1?")).toBe(true);
     expect(target).toContain("timestamp=");
+  });
+
+  it("forwards stacked detail state as one query parameter", () => {
+    const search = "peek=trace-1&observation=observation-1&aggregation=trace";
+    const params = new URLSearchParams({
+      peek: "session-1",
+      traceView: "messages",
+      sessionPeek: search,
+    });
+    window.history.replaceState({}, "", `/project/p1/sessions?${params}`);
+    const { result } = renderHook(() =>
+      usePeekNavigation({
+        tableName: "sessions",
+        isV4: true,
+        queryParams: ["traceView", "sessionPeek"],
+        expandConfig: { basePath: "/project/p1/sessions" },
+      }),
+    );
+    result.current.expandPeek(false);
+    const target = new URL(
+      String(mockPush.mock.lastCall?.[0]),
+      window.location.origin,
+    );
+    expect(target.pathname).toBe("/project/p1/sessions/session-1");
+    expect(target.searchParams.get("sessionPeek")).toBe(search);
+    expect(target.searchParams.get("traceView")).toBe("messages");
+    expect(target.searchParams.has("observation")).toBe(false);
   });
 });
 

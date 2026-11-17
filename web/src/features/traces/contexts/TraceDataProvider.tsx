@@ -43,7 +43,9 @@ type TraceType = Omit<
 };
 
 interface TraceDataContextValue {
-  trace: TraceType;
+  trace: TraceType | null;
+  projectId: string;
+  sessionId: string | null;
   sessionTraces?: Parameters<typeof buildTraceUiData>[2];
   observations: ObservationReturnTypeWithMetadata[];
   serverScores: WithStringifiedMetadata<ScoreDomain>[];
@@ -94,8 +96,26 @@ export function useTraceData(): TraceDataContextValue {
   return context;
 }
 
-interface TraceDataProviderProps {
-  trace: TraceType;
+export function useSingleTraceData() {
+  const data = useTraceData();
+  if (!data.trace) {
+    throw new Error("This view requires a selected trace");
+  }
+  return { ...data, trace: data.trace };
+}
+
+type TraceDataProviderProps = (
+  | {
+      trace: TraceType;
+      projectId?: never;
+      sessionId?: never;
+    }
+  | {
+      trace: null;
+      projectId: string;
+      sessionId: string;
+    }
+) & {
   sessionTraces?: Parameters<typeof buildTraceUiData>[2];
   observations: ObservationReturnTypeWithMetadata[];
   serverScores: WithStringifiedMetadata<ScoreDomain>[];
@@ -107,7 +127,7 @@ interface TraceDataProviderProps {
   isPlaceholderData?: boolean;
   isNavigationReady?: boolean;
   children: ReactNode;
-}
+};
 
 /**
  * TraceDataProvider must be rendered within ViewPreferencesProvider.
@@ -115,6 +135,8 @@ interface TraceDataProviderProps {
  */
 export function TraceDataProvider({
   trace,
+  projectId: sessionProjectId,
+  sessionId: explicitSessionId,
   sessionTraces,
   observations: rawObservations,
   serverScores,
@@ -127,6 +149,8 @@ export function TraceDataProvider({
   isNavigationReady = true,
   children,
 }: TraceDataProviderProps) {
+  const projectId = trace ? trace.projectId : sessionProjectId;
+  const sessionId = trace ? trace.sessionId : explicitSessionId;
   const { minObservationLevel } = useViewPreferences();
 
   // Collapse duplicate/colliding observation ids to one row per id up front, so
@@ -202,8 +226,8 @@ export function TraceDataProvider({
   // Merge scores with optimistic cache
   const mergedScores = useMergedScores(
     serverScores,
-    sessionTraces
-      ? sessionTraces.map((entry) => ({
+    sessionTraces || !trace
+      ? (sessionTraces ?? []).map((entry) => ({
           type: "trace" as const,
           traceId: entry.id,
         }))
@@ -217,6 +241,8 @@ export function TraceDataProvider({
   const value = useMemo<TraceDataContextValue>(
     () => ({
       trace,
+      projectId,
+      sessionId,
       sessionTraces,
       observations,
       serverScores: serverScores,
@@ -237,6 +263,8 @@ export function TraceDataProvider({
     }),
     [
       trace,
+      projectId,
+      sessionId,
       sessionTraces,
       observations,
       serverScores,

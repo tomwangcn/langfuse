@@ -544,7 +544,7 @@ function buildTraceTree(
  * - searchItems: Flattened list for search/virtualized rendering
  */
 export function buildTraceUiData(
-  trace: TraceType,
+  trace: TraceType | null,
   observations: ObservationReturnType[],
   sessionTraces?: TraceType[],
 ): {
@@ -554,7 +554,10 @@ export function buildTraceUiData(
   metricEmphasis: TraceMetricEmphasis;
 } {
   const { roots, nodeMap } = (() => {
-    if (!sessionTraces) return buildTraceTree(trace, observations);
+    if (!sessionTraces) {
+      if (trace) return buildTraceTree(trace, observations);
+      return { roots: [], nodeMap: new Map<string, TreeNode>() };
+    }
 
     const roots: TreeNode[] = [];
     const nodeMap = new Map<string, TreeNode>();
@@ -569,7 +572,7 @@ export function buildTraceUiData(
       group.push(observation);
       observationsByTrace.set(observation.traceId, group);
     }
-    let sessionStart = trace.timestamp.getTime();
+    let sessionStart = trace?.timestamp.getTime() ?? Infinity;
     for (const sessionTrace of sessionTraces) {
       sessionStart = Math.min(sessionStart, sessionTrace.timestamp.getTime());
     }

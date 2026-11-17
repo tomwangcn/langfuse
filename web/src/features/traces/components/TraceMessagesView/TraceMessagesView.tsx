@@ -2,7 +2,10 @@ import { useState, type ComponentProps } from "react";
 import { StringParam, useQueryParam } from "use-query-params";
 import { ErrorBoundary } from "@sentry/nextjs";
 import { useSelection } from "@/src/features/traces/contexts/SelectionProvider";
-import { useTraceData } from "@/src/features/traces/contexts/TraceDataProvider";
+import {
+  useTraceData,
+  useSingleTraceData,
+} from "@/src/features/traces/contexts/TraceDataProvider";
 import { useTraceMessagesNavigation } from "./hooks/useTraceMessagesNavigation";
 import { useTraceMessagesTranscript } from "./hooks/useTraceMessagesTranscript";
 // TODO: Before TraceMessagesView leaves internal preview, rename the components
@@ -14,13 +17,14 @@ import { getSessionTranscriptThreads } from "@/src/features/sessions/components/
 import { ConnectedSessionMessagesView } from "../ConnectedSessionMessagesView/ConnectedSessionMessagesView";
 
 export function TraceMessagesView() {
-  const { trace, sessionTraces, isPlaceholderData } = useTraceData();
-  if (sessionTraces && trace.sessionId) {
+  const { projectId, sessionId, sessionTraces, isPlaceholderData } =
+    useTraceData();
+  if (sessionTraces && sessionId) {
     return (
       <ConnectedSessionMessagesView
-        key={`${trace.projectId}:${trace.sessionId}`}
-        projectId={trace.projectId}
-        sessionId={trace.sessionId}
+        key={`${projectId}:${sessionId}`}
+        projectId={projectId}
+        sessionId={sessionId}
         enabled={!isPlaceholderData}
       />
     );
@@ -29,7 +33,7 @@ export function TraceMessagesView() {
 }
 
 function SingleTraceMessagesView() {
-  const { trace, isPlaceholderData } = useTraceData();
+  const { trace, isPlaceholderData } = useSingleTraceData();
   const [expandedTraceId, setExpandedTraceId] = useState<string | null>(null);
   const { selectNode, setSelectedTab } = useSelection();
   const [, setTraceView] = useQueryParam("traceView", StringParam);

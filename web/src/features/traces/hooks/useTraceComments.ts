@@ -36,7 +36,7 @@ export function useTraceComments({
     },
     {
       refetchOnMount: false,
-      enabled: isAuthenticatedAndProjectMember,
+      enabled: isAuthenticatedAndProjectMember && !!traceId,
     },
   );
 

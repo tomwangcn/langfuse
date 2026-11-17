@@ -264,7 +264,9 @@ export function usePeekNavigation(config: PeekConfig | PeekConfigWithExpand) {
             resolved && param === "timestamp"
               ? (resolved.timestamp?.toISOString() ?? null)
               : params.get(param);
-          return value ? `${param}=${value}` : null;
+          return value
+            ? `${encodeURIComponent(param)}=${encodeURIComponent(value)}`
+            : null;
         })
         .filter(Boolean)
         .join("&");

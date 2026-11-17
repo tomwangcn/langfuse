@@ -197,7 +197,9 @@ function TablePeekViewComponent(props: TablePeekViewProps) {
   // replace (not push) so toggling expand/collapse doesn't spam history.
   const setExpanded = useCallback(
     (expanded: boolean) => {
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(
+        new URL(router.asPath, window.location.origin).search,
+      );
       const currentlyExpanded =
         params.get(PEEK_VIEW_PARAM) === PEEK_VIEW_EXPANDED;
       // No-op when the flag already matches: skip the redundant shallow
@@ -263,6 +265,7 @@ function TablePeekViewComponent(props: TablePeekViewProps) {
     preventDefault: () => void;
   }) => {
     if (
+      typeof router.query.sessionPeek === "string" ||
       shouldKeepPeekOpenOnOutsideInteraction(event.target, ignoredSelectors)
     ) {
       event.preventDefault();
@@ -273,6 +276,8 @@ function TablePeekViewComponent(props: TablePeekViewProps) {
     // Open is driven by row clicks / detail-page navigation; we only react to
     // close requests (Escape, swipe-down, click-outside, the close button).
     if (open) return;
+    // The scoped child router hides sessionPeek, so only the top peek dismisses.
+    if (typeof router.query.sessionPeek === "string") return;
     props.closePeek();
   };
 
@@ -344,6 +349,7 @@ function TablePeekViewComponent(props: TablePeekViewProps) {
               but give portaled child dialogs the same non-modal host as desktop. */}
           <Sheet open={!!itemId} onOpenChange={handleOpenChange} modal={false}>
             <DrawerContent
+              data-peek-content=""
               portalLayer="modal"
               size="full"
               className="min-h-screen-with-banner top-[calc(var(--banner-offset)+10px)] bottom-0 gap-0 p-0"

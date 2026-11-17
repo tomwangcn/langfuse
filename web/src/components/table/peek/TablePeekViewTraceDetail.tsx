@@ -92,7 +92,8 @@ export const TablePeekViewTraceDetail = (
       itemType={isSessionScope ? "SESSION" : tablePeekViewProps.itemType}
       title={isSessionScope && sessionId ? sessionId : traceId}
       titleTabs={
-        showScopeToggle
+        tablePeekViewProps.titleTabs ??
+        (showScopeToggle
           ? getTraceScopeTabs({
               value: isSessionScope ? "session" : "trace",
               canSelectSession,
@@ -127,7 +128,7 @@ export const TablePeekViewTraceDetail = (
                 );
               },
             })
-          : undefined
+          : undefined)
       }
       hideExpandToggle
       preserveContentAcrossItems

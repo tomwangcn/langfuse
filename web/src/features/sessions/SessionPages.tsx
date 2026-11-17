@@ -514,16 +514,17 @@ export const SessionPage: React.FC<{
 export const SessionEventsPage: React.FC<{
   sessionId: string;
   projectId: string;
-}> = ({ sessionId, projectId }) => {
-  const isModernSessionEnabled = useIsFeatureEnabled("sessionViewV2", {
+  embedded?: boolean;
+  navigation?: React.ComponentProps<typeof ModernSession>["navigation"];
+}> = ({ sessionId, projectId, embedded = false, navigation }) => {
+  const modernSessionEnabled = useIsFeatureEnabled("sessionViewV2", {
     projectId,
   });
-  const isSessionTimelineEnabled = useIsFeatureEnabled(
-    "sessionViewV2Timeline",
-    {
-      projectId,
-    },
-  );
+  const sessionTimelineEnabled = useIsFeatureEnabled("sessionViewV2Timeline", {
+    projectId,
+  });
+  const isModernSessionEnabled = embedded || modernSessionEnabled;
+  const isSessionTimelineEnabled = embedded || sessionTimelineEnabled;
   const viewSelection = useSessionViewSelection({
     projectId,
     sessionId,
@@ -597,7 +598,11 @@ export const SessionEventsPage: React.FC<{
     isSessionTimelineEnabled
   ) {
     return (
-      <SessionEventsLoadingPage projectId={projectId} sessionId={sessionId} />
+      <SessionEventsLoadingPage
+        projectId={projectId}
+        sessionId={sessionId}
+        embedded={embedded}
+      />
     );
   }
 
@@ -617,21 +622,41 @@ export const SessionEventsPage: React.FC<{
       traces={tracesQuery.data}
       isTracesSuccess={tracesQuery.isSuccess}
       viewSelection={viewSelection}
+      embedded={embedded}
+      navigation={navigation}
     />
   );
 };
 
 const noopOpenPeek = () => {};
 
+function SessionEventsPageLayout({
+  embedded,
+  children,
+  ...props
+}: React.ComponentProps<typeof Page> & { embedded: boolean }) {
+  if (embedded) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        {children}
+      </div>
+    );
+  }
+  return <Page {...props}>{children}</Page>;
+}
+
 function SessionEventsLoadingPage({
   projectId,
   sessionId,
+  embedded,
 }: {
   projectId: string;
   sessionId: string;
+  embedded: boolean;
 }) {
   return (
-    <Page
+    <SessionEventsPageLayout
+      embedded={embedded}
       headerProps={{
         title: sessionId,
         hideTitleRow: true,
@@ -640,12 +665,14 @@ function SessionEventsLoadingPage({
         ],
       }}
     >
-      <ObservabilityEntityDetailHeader
-        variant="page"
-        headerProps={{ title: sessionId, itemType: "SESSION" }}
-        metrics={[]}
-        isLoading
-      />
+      {!embedded && (
+        <ObservabilityEntityDetailHeader
+          variant="page"
+          headerProps={{ title: sessionId, itemType: "SESSION" }}
+          metrics={[]}
+          isLoading
+        />
+      )}
       <TraceReviewPanelProvider
         key={`${projectId}:${sessionId}`}
         projectId={projectId}
@@ -661,7 +688,7 @@ function SessionEventsLoadingPage({
           </div>
         </SessionReviewWorkspace>
       </TraceReviewPanelProvider>
-    </Page>
+    </SessionEventsPageLayout>
   );
 }
 
@@ -672,6 +699,8 @@ const LoadedSessionEventsPage: React.FC<{
   traces: EventSessionTrace[] | undefined;
   isTracesSuccess: boolean;
   viewSelection: ReturnType<typeof useSessionViewSelection>;
+  embedded: boolean;
+  navigation?: React.ComponentProps<typeof ModernSession>["navigation"];
 }> = ({
   sessionId,
   projectId,
@@ -679,20 +708,21 @@ const LoadedSessionEventsPage: React.FC<{
   traces,
   isTracesSuccess,
   viewSelection,
+  embedded,
+  navigation,
 }) => {
   const router = useRouter();
   const { setDetailPageList, detailPagelists } = useDetailPageLists();
   const userSession = useSession();
   const capture = usePostHogClientCapture();
-  const isModernSessionEnabled = useIsFeatureEnabled("sessionViewV2", {
+  const modernSessionEnabled = useIsFeatureEnabled("sessionViewV2", {
     projectId,
   });
-  const isSessionTimelineEnabled = useIsFeatureEnabled(
-    "sessionViewV2Timeline",
-    {
-      projectId,
-    },
-  );
+  const sessionTimelineEnabled = useIsFeatureEnabled("sessionViewV2Timeline", {
+    projectId,
+  });
+  const isModernSessionEnabled = embedded || modernSessionEnabled;
+  const isSessionTimelineEnabled = embedded || sessionTimelineEnabled;
   const {
     filters: traceFilters,
     unmatchedTraces,
@@ -943,6 +973,7 @@ const LoadedSessionEventsPage: React.FC<{
     usePeekNavigation(peekNavigationConfig);
 
   useEffect(() => {
+    if (embedded) return;
     if (!isTracesSuccess || !traces) return;
     const nextList = traces.map((t: EventSessionTrace) => ({
       id: t.id,
@@ -950,7 +981,13 @@ const LoadedSessionEventsPage: React.FC<{
     }));
     if (areDetailPageListsEqual(detailPagelists.traces, nextList)) return;
     setDetailPageList("traces", nextList);
-  }, [isTracesSuccess, traces, setDetailPageList, detailPagelists.traces]);
+  }, [
+    embedded,
+    isTracesSuccess,
+    traces,
+    setDetailPageList,
+    detailPagelists.traces,
+  ]);
 
   const sessionEventsTableName = "session-events";
   const sessionFilterStorageKey = buildSidebarFilterQueryStorageKey({
@@ -1773,7 +1810,8 @@ const LoadedSessionEventsPage: React.FC<{
                     typeof ObservabilityEntityDetailHeader
                   >["headerProps"];
                   return (
-                    <Page
+                    <SessionEventsPageLayout
+                      embedded={embedded}
                       headerProps={{
                         title: sessionId,
                         hideTitleRow: true,
@@ -1785,60 +1823,64 @@ const LoadedSessionEventsPage: React.FC<{
                         ],
                       }}
                     >
-                      {isModernSessionEnabled ? (
-                        <SessionMetadataJsonPathControl
-                          key={`${projectId}:${sessionId}`}
-                          projectId={projectId}
-                          sessionId={sessionId}
-                          traces={
-                            isTracesSuccess
-                              ? { state: "loaded", data: traces ?? [] }
-                              : { state: "loading" }
-                          }
-                          filterState={
-                            isSessionTimelineEnabled
-                              ? traceFilters
-                              : visibleFilterState
-                          }
-                        >
-                          {(metadataJsonPaths) => (
-                            <SessionHeaderMetricsControl
-                              projectId={projectId}
-                              countTraces={session.countTraces}
-                              minTimestamp={session.minTimestamp}
-                              maxTimestamp={session.maxTimestamp}
-                              tokensIn={session.inputUsage}
-                              tokensOut={session.outputUsage}
-                              totalTokens={session.totalTokens}
-                              totalCost={session.totalCost ?? 0}
-                              users={session.users ?? []}
-                              scores={session.scores}
-                              metadataJsonPaths={metadataJsonPaths}
-                            >
-                              {(metrics) => (
-                                <ConnectedSessionDetailHeader
-                                  {...sessionHeaderWorkflowProps}
-                                  headerProps={headerProps}
-                                  metrics={metrics}
-                                />
-                              )}
-                            </SessionHeaderMetricsControl>
-                          )}
-                        </SessionMetadataJsonPathControl>
-                      ) : (
-                        <ConnectedSessionDetailHeader
-                          {...sessionHeaderWorkflowProps}
-                          headerProps={headerProps}
-                          metrics={getSessionHeaderMetrics({
-                            projectId,
-                            countTraces: session.countTraces,
-                            totalCost: session.totalCost ?? 0,
-                            scores: session.scores,
-                            users: session.users ?? [],
-                          })}
-                        />
-                      )}
-                      <SessionReviewWorkspace projectId={projectId}>
+                      {!embedded &&
+                        (isModernSessionEnabled ? (
+                          <SessionMetadataJsonPathControl
+                            key={`${projectId}:${sessionId}`}
+                            projectId={projectId}
+                            sessionId={sessionId}
+                            traces={
+                              isTracesSuccess
+                                ? { state: "loaded", data: traces ?? [] }
+                                : { state: "loading" }
+                            }
+                            filterState={
+                              isSessionTimelineEnabled
+                                ? traceFilters
+                                : visibleFilterState
+                            }
+                          >
+                            {(metadataJsonPaths) => (
+                              <SessionHeaderMetricsControl
+                                projectId={projectId}
+                                countTraces={session.countTraces}
+                                minTimestamp={session.minTimestamp}
+                                maxTimestamp={session.maxTimestamp}
+                                tokensIn={session.inputUsage}
+                                tokensOut={session.outputUsage}
+                                totalTokens={session.totalTokens}
+                                totalCost={session.totalCost ?? 0}
+                                users={session.users ?? []}
+                                scores={session.scores}
+                                metadataJsonPaths={metadataJsonPaths}
+                              >
+                                {(metrics) => (
+                                  <ConnectedSessionDetailHeader
+                                    {...sessionHeaderWorkflowProps}
+                                    headerProps={headerProps}
+                                    metrics={metrics}
+                                  />
+                                )}
+                              </SessionHeaderMetricsControl>
+                            )}
+                          </SessionMetadataJsonPathControl>
+                        ) : (
+                          <ConnectedSessionDetailHeader
+                            {...sessionHeaderWorkflowProps}
+                            headerProps={headerProps}
+                            metrics={getSessionHeaderMetrics({
+                              projectId,
+                              countTraces: session.countTraces,
+                              totalCost: session.totalCost ?? 0,
+                              scores: session.scores,
+                              users: session.users ?? [],
+                            })}
+                          />
+                        ))}
+                      <SessionReviewWorkspace
+                        projectId={projectId}
+                        enabled={navigation?.activeView !== "trace"}
+                      >
                         <div
                           className={
                             isModernSessionEnabled
@@ -1941,7 +1983,9 @@ const LoadedSessionEventsPage: React.FC<{
                                         trace={trace}
                                         projectId={projectId}
                                         sessionId={sessionId}
-                                        openPeek={openPeek}
+                                        openPeek={
+                                          navigation?.onOpenTrace ?? openPeek
+                                        }
                                         traceCommentCounts={asCommentCounts(
                                           traceCommentCounts.data,
                                         )}
@@ -1956,6 +2000,7 @@ const LoadedSessionEventsPage: React.FC<{
                             </div>
                           ) : (
                             <ModernSession
+                              navigation={navigation}
                               viewMode={viewMode}
                               viewTabs={{
                                 canManageViews: canSaveSessionView,
@@ -2114,7 +2159,7 @@ const LoadedSessionEventsPage: React.FC<{
                           )}
                         </div>
                       </SessionReviewWorkspace>
-                    </Page>
+                    </SessionEventsPageLayout>
                   );
                 }}
               </DialogController>
@@ -2122,17 +2167,19 @@ const LoadedSessionEventsPage: React.FC<{
           }}
         </DialogController>
       </TraceReviewPanelProvider>
-      <TablePeekViewTraceDetail
-        itemType="TRACE"
-        detailNavigationKey="traces"
-        closePeek={closePeek}
-        expandPeek={expandPeek}
-        resolveDetailNavigationPath={resolveDetailNavigationPath}
-        tableName="session-events"
-        isV4={true}
-        projectId={projectId}
-        layout={isModernSessionEnabled ? "observation-focused" : "default"}
-      />
+      {!embedded && (
+        <TablePeekViewTraceDetail
+          itemType="TRACE"
+          detailNavigationKey="traces"
+          closePeek={closePeek}
+          expandPeek={expandPeek}
+          resolveDetailNavigationPath={resolveDetailNavigationPath}
+          tableName="session-events"
+          isV4={true}
+          projectId={projectId}
+          layout={isModernSessionEnabled ? "observation-focused" : "default"}
+        />
+      )}
     </SessionDetailStoreProvider>
   );
 };

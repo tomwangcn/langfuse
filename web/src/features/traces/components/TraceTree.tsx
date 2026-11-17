@@ -81,7 +81,7 @@ function LoadedTraceTree() {
   const selectedTreeNodeId = resolveTreeNodeId(
     nodeMap,
     selectedNodeId,
-    trace.id,
+    trace?.id ?? "",
   );
 
   useLayoutEffect(() => {
