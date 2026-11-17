@@ -98,7 +98,7 @@ function orgSession(
       },
     ],
   });
-  return { ...session, orgId: org.id, orgRoles: [SystemRoleId(role)] };
+  return { ...session, orgId: org.id };
 }
 
 async function existingKeyIds() {
@@ -247,7 +247,6 @@ describe("user-bound API keys", () => {
               },
             }),
             orgId: org.id,
-            orgRoles: [SystemRoleId(Role.OWNER)],
           },
         }),
       ).rejects.toThrow(ForbiddenError);

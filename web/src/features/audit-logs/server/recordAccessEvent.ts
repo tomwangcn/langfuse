@@ -9,7 +9,6 @@ import {
 } from "@langfuse/shared";
 import { prisma } from "@langfuse/shared/src/db";
 import { type ApiAccessScope } from "@langfuse/shared/src/server";
-import { OrganizationId, ProjectId } from "@langfuse/shared/rbac";
 
 import { stageAccessEvent } from "@/src/ee/features/access-audit-log/server/stageAccessEvent";
 import {
@@ -21,7 +20,6 @@ import { getAuditRequestContext } from "@/src/features/audit-logs/server/getAudi
 import { toApiKeyActor, toUserActor } from "@/src/features/audit-logs/auditLog";
 import { getOrganizationPlanServerSide } from "@/src/features/entitlements/server/getPlan";
 import { type ServerContext } from "@/src/features/mcp/types";
-import { rolesFor } from "@/src/features/rbac/utils/rolesFor";
 
 /** What a route returned: the resource it read, typed refs to every resource in the response, and the validated request input. */
 export type AccessRead = {
@@ -90,18 +88,11 @@ async function recordUserAccess(
     return;
   }
 
-  const tenant = OrganizationId(auditOrg.orgId);
   await stageAccessEvent({
     ...read,
     orgId: auditOrg.orgId,
     projectId,
-    actor: toUserActor(user, {
-      orgRole: rolesFor(session, tenant, tenant).sort().join(",") || undefined,
-      projectRole:
-        rolesFor(session, tenant, ProjectId(projectId)).sort().join(",") ||
-        undefined,
-      supportAccess,
-    }),
+    actor: toUserActor({ ...session, user }, auditOrg.orgId, projectId),
     surface: via.surface,
     request: getAuditRequestContext(via.headers, via.remoteAddress),
   });
