@@ -509,21 +509,21 @@ it.each([
     const picker = within(
       await screen.findByRole("dialog", { name: "Topic maps" }),
     );
-    // Every entry stays visible; without write access it is disabled.
+    // Every entry stays visible; without write access it is disabled and says why on screen.
     for (const name of [/^Refresh “Rule”/, /^New live map/, /^New snapshot/]) {
-      expect(picker.getByRole("button", { name })).toHaveProperty(
-        "disabled",
-        !canWrite,
-      );
+      const entry = picker.getByRole("button", { name });
+      expect(entry).toHaveProperty("disabled", !canWrite);
+      expect(
+        entry.textContent?.includes("You need permission to edit Topics."),
+      ).toBe(!canWrite);
     }
-    // The refresh entry says what it does, or why it can't run, on screen.
     expect(
-      picker.getByText(
-        canWrite
-          ? "Recluster its topics now instead of waiting for the nightly update."
-          : "You need permission to edit Topics.",
-      ),
-    ).toBeInTheDocument();
+      picker.getByRole("button", { name: /^Refresh “Rule”/ }).textContent,
+    ).toContain(
+      canWrite
+        ? "Recluster its topics now instead of waiting for the nightly update."
+        : "You need permission to edit Topics.",
+    );
   },
 );
 

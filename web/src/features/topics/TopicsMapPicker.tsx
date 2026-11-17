@@ -8,7 +8,6 @@ import {
   type IconComponent,
 } from "@langfuse/icons";
 import { Badge } from "@/src/components/design-system/Badge/Badge";
-import { Tooltip } from "@/src/components/design-system/Tooltip/Tooltip";
 import { DropdownIndicator } from "@/src/components/design-system/DropdownIndicator/DropdownIndicator";
 import { FloatingController } from "@/src/components/design-system/FloatingController/FloatingController";
 import { cn } from "@/src/utils/tailwind";
@@ -266,12 +265,13 @@ function FooterButton({
   entry: FooterEntry;
   icon: IconComponent;
   label: string;
-  /** A second line saying what the entry does; a disabled entry shows its reason there instead. */
+  /** A second line saying what the entry does; a disabled entry shows its reason there. */
   description?: string;
   onChosen: () => void;
 }) {
-  const secondLine = description ? (entry.disabledReason ?? description) : null;
-  const button = (
+  // Touch screens show no tooltip, so a disabled entry's reason is on screen.
+  const secondLine = entry.disabledReason ?? description;
+  return (
     <button
       type="button"
       disabled={Boolean(entry.disabledReason)}
@@ -294,21 +294,6 @@ function FooterButton({
         )}
       </span>
     </button>
-  );
-  // A reason already on the second line needs no tooltip.
-  if (!entry.disabledReason || secondLine) return button;
-  return (
-    // Disabled buttons fire no pointer events, so the tooltip listens on a wrapper.
-    <Tooltip label={entry.disabledReason}>
-      {({ getTriggerProps }) => (
-        <span
-          {...getTriggerProps()}
-          className="flex w-full cursor-not-allowed [&>button]:pointer-events-none"
-        >
-          {button}
-        </span>
-      )}
-    </Tooltip>
   );
 }
 
